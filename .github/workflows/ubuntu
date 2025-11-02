@@ -1,0 +1,88 @@
+name: Tailscale CI/CD Setup
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  connect_tailscale:
+    # Use a matrix to run the same job on multiple operating systems
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Conditional Installation Steps ---
+      
+      - name: ⬇️ Install Tailscale on macOS
+        if: runner.os == 'macOS'
+        run: |
+          # The macOS installation requires downloading and using the built-in installer utility.
+          TAILSCALE_URL="https://pkgs.tailscale.com/stable/Tailscale-latest-macos.pkg"
+          PKG_FILE="Tailscale.pkg"
+          TAILSCALE_BIN="/Applications/Tailscale.app/Contents/MacOS/tailscale"
+          
+          echo "Downloading and installing Tailscale on macOS..."
+          curl -L -o "$PKG_FILE" "$TAILSCALE_URL"
+          sudo installer -pkg "$PKG_FILE" -target /
+          rm "$PKG_FILE"
+          
+          # Add the binary path to the system PATH for subsequent steps
+          if [[ -f "$TAILSCALE_BIN" ]]; then
+            echo "$TAILSCALE_BIN" >> $GITHUB_PATH
+            echo "✅ Tailscale binary path added to \$PATH."
+          else
+            echo "❌ Tailscale installation failed. Binary not found at $TAILSCALE_BIN."
+            exit 1
+          fi
+
+      - name: ⬇️ Install Tailscale on Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          # The Ubuntu installation uses the recommended apt repository method.
+          echo "Adding Tailscale repository and installing on Ubuntu..."
+          # Note: 'jammy' is the codename for Ubuntu 22.04, the current 'ubuntu-latest'.
+          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.gpg | sudo gpg --dearmor -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+          
+          sudo apt-get update
+          sudo apt-get install -y tailscale
+          
+          if command -v tailscale > /dev/null; then
+            echo "✅ Tailscale command line tool is now available."
+          else
+            echo "❌ Tailscale installation failed."
+            exit 1
+          fi
+
+      # --- Tailscale Connection Steps ---
+
+      - name: 🔑 Authenticate and Connect to Tailnet
+        # This step runs on both macOS and Linux, as 'tailscale' is now in the PATH.
+        run: |
+          echo "Authenticating and connecting to Tailnet..."
+          # Use an ephemeral authentication key and disable automatic DNS configuration.
+          sudo tailscale up \
+            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
+            --accept-dns=false \
+            --timeout 1m
+            
+          echo "Tailscale connection status:"
+          tailscale status
+        env:
+          TS_NOGUI: "true" # Required for macOS to prevent GUI dialogs
+
+      # --- Verification/Test Step (Example) ---
+      
+      - name: 🌐 Verify Connectivity to a Tailnet Resource
+        run: |
+          # Replace 'some-node-name' or '100.x.x.x' with an actual node on your Tailnet
+          # This is an example to show you can now access your private network
+          echo "Pinging a private Tailnet IP (Example)..."
+          ping -c 3 100.100.100.100 || true # Use an internal IP or node name
