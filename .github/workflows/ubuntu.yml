@@ -39,19 +39,40 @@ jobs:
       # --- Tailscale Connection Steps ---
 
       - name: 🔑 Authenticate and Connect to Tailnet
-        # This step runs on both macOS and Linux, as 'tailscale' is now in the PATH.
+        # This step starts the background service and then connects the node.
         run: |
+          # 1. Start the Tailscale Daemon (tailscaled)
+          echo "Starting Tailscale background service..."
+          # 'sudo tailscaled' starts the main service.
+          # The '&' runs it in the background, essential for CI.
+          sudo tailscaled &
+          
+          # Give the service a moment to start up
+          sleep 5 
+          
+          # 2. Authenticate and Connect
           echo "Authenticating and connecting to Tailnet..."
-          # Use an ephemeral authentication key and disable automatic DNS configuration.
-          sudo tailscale up \
-            --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} \
-            --accept-dns=false \
-            --timeout 1m
+          
+          # Use the full path for the command on macOS for absolute certainty (if needed)
+          # On Ubuntu, 'tailscale' is in the PATH, but running the full path on macOS
+          # ensures it works regardless of the previous $GITHUB_PATH setting.
+          TS_COMMAND=$(command -v tailscale || echo "/Applications/Tailscale.app/Contents/MacOS/tailscale")
+      
+          sudo "$TS_COMMAND" up \
+            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
+            --accept-routes \
+            --timeout 1m \
+            --hostname github-runner-${{ matrix.os }}-${{ github.run_id }}
             
+          # 3. Verify status
           echo "Tailscale connection status:"
-          tailscale status
+          sudo "$TS_COMMAND" status
+          
+          # 4. Final Verification: Check the IP
+          echo "Node IP address on Tailnet:"
+          sudo "$TS_COMMAND" ip
         env:
-          TS_NOGUI: "true" # Required for macOS to prevent GUI dialogs
+          TS_NOGUI: "true" # Prevents GUI interaction on macOS
 
       # --- Verification/Test Step (Example) ---
       
@@ -60,4 +81,5 @@ jobs:
           # Replace 'some-node-name' or '100.x.x.x' with an actual node on your Tailnet
           # This is an example to show you can now access your private network
           echo "Pinging a private Tailnet IP (Example)..."
+          echo "Address: $env:TAILSCALE_IP"
           ping -c 3 100.100.100.100 || true # Use an internal IP or node name
