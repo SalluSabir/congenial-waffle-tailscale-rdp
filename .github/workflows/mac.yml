@@ -1,0 +1,111 @@
+name: Secure Shell (SSH) via Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-shell:
+    # Change the runner to macOS
+    runs-on: macos-latest
+    # Keep the long timeout
+    timeout-minutes: 3600
+
+    steps:
+      - name: Configure Core SSH Settings
+        run: |
+          # The macOS GitHub runner usually has SSH enabled.
+          # We mainly ensure the runner is listening on port 22.
+          echo "macOS SSH server is typically running and listening on port 22."
+          # On macOS, the SSH server is managed by launchctl.
+          # The service is usually enabled on GitHub runners.
+          # To check/enable:
+          # sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+
+          # Since we are using Tailscale, we rely on its encryption and firewalling.
+          # No public firewall configuration is strictly needed on the host.
+
+      - name: Create SSH User with Secure Password
+        run: |
+          # Use Python to generate a secure password for the SSH user
+          echo "Generating a strong password..."
+          PASSWORD=$(python3 -c "import random, string; chars = string.ascii_letters + string.digits + string.punctuation; print(''.join(random.choice(chars) for i in range(16)))")
+          
+          # Create a temporary user 'SSHUSER' (Note: Adding local users on macOS runners is restricted/complex)
+          # A more reliable approach on ephemeral runners is to use the existing 'runner' user, 
+          # but we'll set a secure password for it, which is also restricted.
+          # The SAFEST and most reliable method is to use *SSH Keys* instead of a password.
+          # However, to maintain the original workflow's spirit (user/pass), we'll skip user creation
+          # and simply output the secure password for *informational purposes* # and rely on the *Tailscale IP* for access and *SSH key-pair access* if possible.
+          # For a simple password-based connection *if* you can set the password, this is the command:
+          # echo "$PASSWORD" | sudo dscl . -passwd /Users/runner -
+          
+          # Since setting a password for the 'runner' user is not reliable on GitHub runners:
+          # We'll just print the access info for the Tailscale connection.
+          # The SSH connection will use the standard 'runner' user and rely on Tailscale's network security.
+
+          echo "SSH_CREDS=User: runner | Password: <Please use your SSH key or Tailscale auth method>" >> $GITHUB_ENV
+          echo "Generated Password (not set on user): $PASSWORD" 
+          
+          # In a real-world scenario, you would install an SSH key here:
+          # echo "${{ secrets.SSH_PUBLIC_KEY }}" | sudo tee -a /Users/runner/.ssh/authorized_keys
+
+      - name: Install Tailscale
+        run: |
+          # Download the Tailscale tarball for Darwin (macOS)
+          TS_VERSION="1.82.0" # Use a known stable version
+          curl -fsSL "https://pkgs.tailscale.com/stable/tailscale-darwin-amd64-$TS_VERSION.tgz" -o tailscale.tgz
+          tar -xzf tailscale.tgz
+          
+          # Move the binaries to a location in PATH
+          sudo mv tailscale/tailscale /usr/local/bin/
+          sudo mv tailscale/tailscaled /usr/local/bin/
+          
+          # Start the Tailscale daemon
+          sudo tailscaled &
+
+      - name: Establish Tailscale Connection
+        run: |
+          # Bring up Tailscale with the provided auth key and set a unique hostname
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$GITHUB_RUN_ID
+          
+          # Wait for Tailscale to assign an IP
+          TS_IP=""
+          RETRY_COUNT=0
+          while [ -z "$TS_IP" ] && [ "$RETRY_COUNT" -lt 10 ]; do
+              TS_IP=$(tailscale ip -4)
+              sleep 5
+              RETRY_COUNT=$((RETRY_COUNT+1))
+          done
+          
+          if [ -z "$TS_IP" ]; then
+              echo "Tailscale IP not assigned. Exiting."
+              exit 1
+          fi
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+      
+      - name: Verify SSH Accessibility
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          
+          # Test connectivity using 'nc' (netcat) against the Tailscale IP on port 22 (SSH default)
+          if ! nc -z -w 5 "$TAILSCALE_IP" 22; then
+              echo "TCP connection to SSH port 22 failed"
+              exit 1
+          fi
+          echo "TCP connectivity successful!"
+
+      - name: Maintain Connection
+        run: |
+          echo ""
+          echo "=== SSH ACCESS ==="
+          echo "Address: $TAILSCALE_IP"
+          echo "Username: runner"
+          echo "Connect with: ssh runner@$TAILSCALE_IP"
+          echo "=================="
+          echo ""
+          
+          # Keep runner active indefinitely (or until manually cancelled)
+          while true; do
+              echo "[$(date)] Shell Active - Use Ctrl+C in workflow to terminate"
+              sleep 300
+          done
