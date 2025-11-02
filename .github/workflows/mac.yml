@@ -80,21 +80,6 @@ jobs:
             echo "❌ Tailscale installation failed. Binary not found at $TAILSCALE_BIN."
             exit 1
           fi
-      
-      - name: 🔑 Authenticate and Connect to Tailnet
-        # The 'tailscale' command is now available because it was added to $GITHUB_PATH in the previous step
-        # This step starts the Tailscale service and connects it to your Tailnet
-        run: |
-          echo "Authenticating and connecting to Tailnet..."
-          # The 'sudo' command is required to start the system-level Tailscale service
-          sudo /Applications/Tailscale.app/Contents/MacOS/tailscale up \
-            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
-            --accept-dns=false \
-            --timeout 1m
-            
-          /Applications/Tailscale.app/Contents/MacOS/tailscale status
-        env:
-          TS_NOGUI: "true" # Prevents GUI interaction
 
       - name: Establish Tailscale Connection
         run: |
