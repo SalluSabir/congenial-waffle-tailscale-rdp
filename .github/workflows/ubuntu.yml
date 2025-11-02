@@ -59,7 +59,7 @@ jobs:
           TS_COMMAND=$(command -v tailscale || echo "/Applications/Tailscale.app/Contents/MacOS/tailscale")
       
           sudo "$TS_COMMAND" up \
-            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
+            --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} \
             --accept-routes \
             --timeout 1m \
             --hostname github-runner-${{ matrix.os }}-${{ github.run_id }}
