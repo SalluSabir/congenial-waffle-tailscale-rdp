@@ -51,8 +51,9 @@ jobs:
           # Note: This is NOT the VNC password, it's just a generated string.
           echo "Generated Password (NOT USED for VNC): $PASSWORD" 
 
-      - name: Install Tailscale
+      - name: ⬇️ Download and Install Tailscale
         run: |
+          # 1. Define URL and Filename (Same as before)
           TAILSCALE_URL="https://pkgs.tailscale.com/stable/Tailscale-latest-macos.pkg"
           PKG_FILE="Tailscale.pkg"
           
@@ -64,12 +65,36 @@ jobs:
           
           rm "$PKG_FILE"
           
-          if command -v tailscale > /dev/null; then
-            echo "✅ Tailscale command line tool is now available."
+          # 2. Define the path to the installed binary
+          # The Tailscale CLI is installed inside the .app bundle
+          TAILSCALE_BIN="/Applications/Tailscale.app/Contents/MacOS/tailscale"
+      
+          # 3. Verify and use the correct path
+          if [[ -f "$TAILSCALE_BIN" ]]; then
+            echo "✅ Tailscale binary found at $TAILSCALE_BIN."
+            
+            # Export the path so subsequent steps can find the 'tailscale' command
+            # This technique is used to add a path for the current job/step only
+            echo "$TAILSCALE_BIN" >> $GITHUB_PATH
           else
-            echo "❌ Tailscale installation failed. The command 'tailscale' was not found."
+            echo "❌ Tailscale installation failed. Binary not found at $TAILSCALE_BIN."
             exit 1
           fi
+      
+      - name: 🔑 Authenticate and Connect to Tailnet
+        # The 'tailscale' command is now available because it was added to $GITHUB_PATH in the previous step
+        # This step starts the Tailscale service and connects it to your Tailnet
+        run: |
+          echo "Authenticating and connecting to Tailnet..."
+          # The 'sudo' command is required to start the system-level Tailscale service
+          sudo tailscale up \
+            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
+            --accept-dns=false \
+            --timeout 1m
+            
+          tailscale status
+        env:
+          TS_NOGUI: "true" # Prevents GUI interaction
 
       - name: Establish Tailscale Connection
         run: |
