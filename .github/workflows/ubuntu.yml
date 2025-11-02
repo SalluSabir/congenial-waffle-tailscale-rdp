@@ -44,7 +44,7 @@ jobs:
           echo "Authenticating and connecting to Tailnet..."
           # Use an ephemeral authentication key and disable automatic DNS configuration.
           sudo tailscale up \
-            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
+            --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} \
             --accept-dns=false \
             --timeout 1m
             
