@@ -1,10 +1,7 @@
 name: Tailscale CI/CD Setup
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   connect_tailscale:
