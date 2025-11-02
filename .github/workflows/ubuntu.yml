@@ -1,56 +1,34 @@
-name: Tailscale CI/CD Setup
+name: Tailscale Ubuntu Setup
 
 on:
   workflow_dispatch:
 
 jobs:
-  connect_tailscale:
-    # Use a matrix to run the same job on multiple operating systems
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    
-    runs-on: ${{ matrix.os }}
-    
+  secure-shell:
+        # Change the runner to macOS
+    runs-on: ubuntu-latest
+        # Keep the long timeout
+    timeout-minutes: 3600
+
+        
     steps:
-      - uses: actions/checkout@v4
-
-      # --- Conditional Installation Steps ---
-      
-      - name: ⬇️ Install Tailscale on macOS
-        if: runner.os == 'macOS'
-        run: |
-          # The macOS installation requires downloading and using the built-in installer utility.
-          TAILSCALE_URL="https://pkgs.tailscale.com/stable/Tailscale-latest-macos.pkg"
-          PKG_FILE="Tailscale.pkg"
-          TAILSCALE_BIN="/Applications/Tailscale.app/Contents/MacOS/tailscale"
-          
-          echo "Downloading and installing Tailscale on macOS..."
-          curl -L -o "$PKG_FILE" "$TAILSCALE_URL"
-          sudo installer -pkg "$PKG_FILE" -target /
-          rm "$PKG_FILE"
-          
-          # Add the binary path to the system PATH for subsequent steps
-          if [[ -f "$TAILSCALE_BIN" ]]; then
-            echo "$TAILSCALE_BIN" >> $GITHUB_PATH
-            echo "✅ Tailscale binary path added to \$PATH."
-          else
-            echo "❌ Tailscale installation failed. Binary not found at $TAILSCALE_BIN."
-            exit 1
-          fi
-
       - name: ⬇️ Install Tailscale on Ubuntu
-        if: runner.os == 'Linux'
         run: |
-          # The Ubuntu installation uses the recommended apt repository method.
-          echo "Adding Tailscale repository and installing on Ubuntu..."
-          # Note: 'jammy' is the codename for Ubuntu 22.04, the current 'ubuntu-latest'.
+          # 1. Fetch and DEARmor the GPG key to a secure location
+          # The key 458CA832957F5868 is the official Tailscale key.
+          echo "Importing Tailscale GPG key..."
           curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.gpg | sudo gpg --dearmor -o /usr/share/keyrings/tailscale-archive-keyring.gpg
-          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.list | sudo tee /etc/apt/sources.list.d/tailscale.list
           
+          # 2. Add the Tailscale repository using the specified keyring file
+          echo "Adding Tailscale repository list..."
+          echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/tailscale.list
+      
+          # 3. Update package lists and install Tailscale
+          echo "Updating package lists and installing Tailscale..."
           sudo apt-get update
           sudo apt-get install -y tailscale
-          
+      
+          # 4. Verify installation
           if command -v tailscale > /dev/null; then
             echo "✅ Tailscale command line tool is now available."
           else
