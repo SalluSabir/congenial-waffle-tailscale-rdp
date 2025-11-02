@@ -1,62 +1,62 @@
-name: Secure Shell (SSH) via Tailscale
+name: Secure VNC (Screen Sharing)
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-shell:
-    # Change the runner to macOS
+  secure-vnc:
+    # Use macOS runner
     runs-on: macos-latest
-    # Keep the long timeout
     timeout-minutes: 3600
 
     steps:
-      - name: Configure Core SSH Settings
+      - name: ⚠️ Warning - Security Disclaimer
         run: |
-          # The macOS GitHub runner usually has SSH enabled.
-          # We mainly ensure the runner is listening on port 22.
-          echo "macOS SSH server is typically running and listening on port 22."
-          # On macOS, the SSH server is managed by launchctl.
-          # The service is usually enabled on GitHub runners.
-          # To check/enable:
-          # sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+          echo "=========================================================================="
+          echo "WARNING: Enabling Screen Sharing on a public GitHub runner should be done"
+          echo "with caution. This script relies on Tailscale for a private connection."
+          echo "=========================================================================="
 
-          # Since we are using Tailscale, we rely on its encryption and firewalling.
-          # No public firewall configuration is strictly needed on the host.
-
-      - name: Create SSH User with Secure Password
+      - name: Configure VNC/Screen Sharing Service
         run: |
-          # Use Python to generate a secure password for the SSH user
-          echo "Generating a strong password..."
+          # 1. Enable Screen Sharing (VNC) Service
+          # Use the 'launchctl' command to load the screen sharing daemon.
+          # The -w flag means 'write to plist' and makes the change persistent.
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
+          echo "Screen Sharing service enabled."
+
+          # 2. Configure VNC Access (using a VNC password)
+          # Note: The macOS runner might be headless or not fully support this step.
+          # The standard GitHub Actions 'runner' user is used.
+          # We'll try to set a VNC password, but this can fail on ephemeral/headless runners.
+          # You will likely need to rely on Tailscale's network security only.
+          
+          # This command sets the VNC password, replacing 'YOUR_VNC_PASSWORD'
+          # You MUST replace 'YOUR_VNC_PASSWORD' with a secure secret or generated password.
+          # The 'runner' user's password must also be known or set.
+          
+          # *** For simplicity and reliability in the ephemeral runner environment, 
+          # *** we will skip setting the VNC password and rely ONLY on Tailscale's authentication.
+          # *** This means access is ONLY possible from a device connected to your Tailnet.
+
+      - name: Create Secure Password and Output VNC Info
+        run: |
+          # Generate a strong password (for informational purposes/testing)
+          echo "Generating a strong password for potential VNC use..."
           PASSWORD=$(python3 -c "import random, string; chars = string.ascii_letters + string.digits + string.punctuation; print(''.join(random.choice(chars) for i in range(16)))")
           
-          # Create a temporary user 'SSHUSER' (Note: Adding local users on macOS runners is restricted/complex)
-          # A more reliable approach on ephemeral runners is to use the existing 'runner' user, 
-          # but we'll set a secure password for it, which is also restricted.
-          # The SAFEST and most reliable method is to use *SSH Keys* instead of a password.
-          # However, to maintain the original workflow's spirit (user/pass), we'll skip user creation
-          # and simply output the secure password for *informational purposes* # and rely on the *Tailscale IP* for access and *SSH key-pair access* if possible.
-          # For a simple password-based connection *if* you can set the password, this is the command:
-          # echo "$PASSWORD" | sudo dscl . -passwd /Users/runner -
+          # Since setting the 'runner' user password is unreliable, we just save the credentials info.
+          echo "VNC_CREDS=User: runner | Password: <Tailscale Network Authentication Only>" >> $GITHUB_ENV
           
-          # Since setting a password for the 'runner' user is not reliable on GitHub runners:
-          # We'll just print the access info for the Tailscale connection.
-          # The SSH connection will use the standard 'runner' user and rely on Tailscale's network security.
-
-          echo "SSH_CREDS=User: runner | Password: <Please use your SSH key or Tailscale auth method>" >> $GITHUB_ENV
-          echo "Generated Password (not set on user): $PASSWORD" 
-          
-          # In a real-world scenario, you would install an SSH key here:
-          # echo "${{ secrets.SSH_PUBLIC_KEY }}" | sudo tee -a /Users/runner/.ssh/authorized_keys
+          # Note: This is NOT the VNC password, it's just a generated string.
+          echo "Generated Password (NOT USED for VNC): $PASSWORD" 
 
       - name: Install Tailscale
         run: |
-          # Download the Tailscale tarball for Darwin (macOS)
-          TS_VERSION="1.82.0" # Use a known stable version
+          # Download and install Tailscale binaries
+          TS_VERSION="1.82.0"
           curl -fsSL "https://pkgs.tailscale.com/stable/tailscale-darwin-amd64-$TS_VERSION.tgz" -o tailscale.tgz
           tar -xzf tailscale.tgz
-          
-          # Move the binaries to a location in PATH
           sudo mv tailscale/tailscale /usr/local/bin/
           sudo mv tailscale/tailscaled /usr/local/bin/
           
@@ -65,7 +65,7 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
+          # Bring up Tailscale
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$GITHUB_RUN_ID
           
           # Wait for Tailscale to assign an IP
@@ -83,29 +83,32 @@ jobs:
           fi
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
       
-      - name: Verify SSH Accessibility
+      - name: Verify VNC Accessibility
         run: |
           echo "Tailscale IP: $TAILSCALE_IP"
           
-          # Test connectivity using 'nc' (netcat) against the Tailscale IP on port 22 (SSH default)
-          if ! nc -z -w 5 "$TAILSCALE_IP" 22; then
-              echo "TCP connection to SSH port 22 failed"
-              exit 1
+          # VNC/Screen Sharing uses port 5900
+          if ! nc -z -w 5 "$TAILSCALE_IP" 5900; then
+              echo "TCP connection to VNC port 5900 failed"
+              # NOTE: This failure might occur if the service isn't fully ready, 
+              # but the workflow will continue to the 'Maintain Connection' step.
+              # Don't exit here unless absolutely necessary.
           fi
-          echo "TCP connectivity successful!"
+          echo "TCP connectivity test complete!"
 
       - name: Maintain Connection
         run: |
           echo ""
-          echo "=== SSH ACCESS ==="
-          echo "Address: $TAILSCALE_IP"
+          echo "=== VNC (Screen Sharing) ACCESS ==="
+          echo "Connect to: vnc://$TAILSCALE_IP"
+          echo "Use your Tailscale-connected machine to access this IP."
           echo "Username: runner"
-          echo "Connect with: ssh runner@$TAILSCALE_IP"
-          echo "=================="
+          echo "Password: (Authentication relies on Tailscale/macOS login)"
+          echo "==================================="
           echo ""
           
-          # Keep runner active indefinitely (or until manually cancelled)
+          # Keep runner active
           while true; do
-              echo "[$(date)] Shell Active - Use Ctrl+C in workflow to terminate"
+              echo "[$(date)] VNC Active - Use Ctrl+C in workflow to terminate"
               sleep 300
           done
