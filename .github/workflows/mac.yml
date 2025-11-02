@@ -87,25 +87,25 @@ jobs:
         run: |
           echo "Authenticating and connecting to Tailnet..."
           # The 'sudo' command is required to start the system-level Tailscale service
-          sudo tailscale up \
+          sudo /Applications/Tailscale.app/Contents/MacOS/tailscale up \
             --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
             --accept-dns=false \
             --timeout 1m
             
-          tailscale status
+          /Applications/Tailscale.app/Contents/MacOS/tailscale status
         env:
           TS_NOGUI: "true" # Prevents GUI interaction
 
       - name: Establish Tailscale Connection
         run: |
           # Bring up Tailscale
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$GITHUB_RUN_ID
+          sudo /Applications/Tailscale.app/Contents/MacOS/tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$GITHUB_RUN_ID
           
           # Wait for Tailscale to assign an IP
           TS_IP=""
           RETRY_COUNT=0
           while [ -z "$TS_IP" ] && [ "$RETRY_COUNT" -lt 10 ]; do
-              TS_IP=$(tailscale ip -4)
+              TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/tailscale ip -4)
               sleep 5
               RETRY_COUNT=$((RETRY_COUNT+1))
           done
