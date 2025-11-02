@@ -53,15 +53,23 @@ jobs:
 
       - name: Install Tailscale
         run: |
-          # Download and install Tailscale binaries
-          TS_VERSION="1.82.0"
-          curl -fsSL "https://pkgs.tailscale.com/stable/tailscale-darwin-amd64-$TS_VERSION.tgz" -o tailscale.tgz
-          tar -xzf tailscale.tgz
-          sudo mv tailscale/tailscale /usr/local/bin/
-          sudo mv tailscale/tailscaled /usr/local/bin/
+          TAILSCALE_URL="https://pkgs.tailscale.com/stable/Tailscale-latest-macos.pkg"
+          PKG_FILE="Tailscale.pkg"
           
-          # Start the Tailscale daemon
-          sudo tailscaled &
+          echo "Downloading Tailscale package..."
+          curl -L -o "$PKG_FILE" "$TAILSCALE_URL"
+          
+          echo "Installing Tailscale..."
+          sudo installer -pkg "$PKG_FILE" -target /
+          
+          rm "$PKG_FILE"
+          
+          if command -v tailscale > /dev/null; then
+            echo "✅ Tailscale command line tool is now available."
+          else
+            echo "❌ Tailscale installation failed. The command 'tailscale' was not found."
+            exit 1
+          fi
 
       - name: Establish Tailscale Connection
         run: |
